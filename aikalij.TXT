@@ -1,0 +1,58 @@
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+alter PROCEDURE GenerateID
+AS
+declare @maxValue bigint
+BEGIN
+    SET NOCOUNT ON;
+    create table #tempTable(SchemaName nvarchar(max), TableName nvarchar(max),ColumnName nvarchar(max),MaxValue bigint);
+    DECLARE @sql NVARCHAR(MAX)
+    DECLARE @sqlStatement NVARCHAR(MAX) = '';
+    WITH CTE AS
+    (
+        SELECT
+            SCH.[name] AS [Schema]
+            ,TAB.[name] AS [Table]
+            ,COL.[name] AS [Column]
+        FROM sys.columns AS COL
+            JOIN sys.tables AS TAB
+                ON COL.[object_id] = TAB.[object_id]
+            JOIN sys.schemas AS SCH
+                ON TAB.[schema_id] = SCH.[schema_id]
+        WHERE COL.system_type_id NOT IN (104,240) and col.name LIKE 'employee%'
+    )
+    SELECT @sqlStatement += 
+            'UNION ALL
+            SELECT 
+                '''+[Schema]+''' AS [SchemaName]
+                ,'''+[Table]+''' AS [TableName]
+                ,'''+[Column]+''' AS [ColumnName]
+                ,CONVERT(NVARCHAR(MAX),MAX(['+[Column]+'])) AS MaxValue
+            FROM ['+[Schema]+'].['+[Table]+']'
+    FROM CTE;
+    SET @sqlStatement = STUFF(@sqlStatement,1,10,'');
+    insert into #tempTable EXEC sp_executesql @sqlStatement;
+    
+    select @maxValue = max(MaxValue) from #tempTable
+    
+    IF OBJECT_ID('SEQ_TraditionalBigbangSequence') IS NOT NULL
+    DROP SEQUENCE [dbo].[SEQ_TraditionalBigbangSequence]
+
+ 
+
+    SET @sql = N'CREATE SEQUENCE [dbo].[SEQ_TraditionalBigbangSequence] 
+     AS [bigint]
+     START WITH ' + cast(@maxValue as nvarchar)
+     + ' CACHE'
+    EXEC(@sql) 
+    
+    SELECT NEXT VALUE FOR SEQ_TraditionalBigbangSequence; 
+
+ 
+
+    drop table #tempTable
+END
+GO
+ 
